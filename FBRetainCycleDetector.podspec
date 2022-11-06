@@ -12,6 +12,14 @@ Pod::Spec.new do |s|
   }
   s.source_files  = "FBRetainCycleDetector", "{FBRetainCycleDetector,rcd_fishhook}/**/*.{h,m,mm,c}"
 
+  s.user_target_xcconfig = {
+      'GENERATE_INFOPLIST_FILE' => 'YES'
+  }
+
+  s.pod_target_xcconfig = {
+      'GENERATE_INFOPLIST_FILE' => 'YES'
+  }
+
   mrr_files = [
     'FBRetainCycleDetector/Associations/FBAssociationManager.h',
     'FBRetainCycleDetector/Associations/FBAssociationManager.mm',
