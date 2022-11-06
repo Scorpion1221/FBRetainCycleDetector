@@ -1,31 +1,136 @@
-### 3 分钟了解如何进入开发
+# FBRetainCycleDetector
+[![Support Ukraine](https://img.shields.io/badge/Support-Ukraine-FFD500?style=flat&labelColor=005BBB)](https://opensource.fb.com/support-ukraine)
+[![Build Status](https://travis-ci.org/facebook/FBRetainCycleDetector.svg?branch=main)](https://travis-ci.org/facebook/FBRetainCycleDetector)
+[![Carthage compatible](https://img.shields.io/badge/Carthage-compatible-4BC51D.svg?style=flat)](https://github.com/Carthage/Carthage)
+[![CocoaPods](https://img.shields.io/cocoapods/v/FBRetainCycleDetector.svg)](https://cocoapods.org/pods/FBRetainCycleDetector)
+[![License](https://img.shields.io/cocoapods/l/FBRetainCycleDetector.svg)](https://github.com/facebook/FBRetainCycledetector/blob/main/LICENSE)
 
-欢迎使用云效 Codeup，通过阅读以下内容，你可以快速熟悉 Codeup ，并立即开始今天的工作。
+An iOS library that finds retain cycles using runtime analysis.
 
-### 提交**文件**
+## About
+Retain cycles are one of the most common ways of creating memory leaks. It's incredibly easy to create a retain cycle, and tends to be hard to spot it.
+The goal of FBRetainCycleDetector is to help find retain cycles at runtime.
+The features of this project were influenced by [Circle](https://github.com/mikeash/Circle).
 
-首先，你需要了解在 Codeup 中如何提交代码文件，跟着文档「[__提交第一行代码__](https://help.aliyun.com/document_detail/153708.html)」一起操作试试看吧。
+## Installation
 
-### 开启代码检测
+### Carthage
 
-开发过程中，为了更好的管理你的代码资产，Codeup 内置了「[__代码检测服务__](https://help.aliyun.com/document_detail/434321.html)，可设置提交或合并请求的变更自动触发扫描，并及时提供结果反馈。
-![](https://img.alicdn.com/tfs/TB1nRDatoz1gK0jSZLeXXb9kVXa-1122-380.png "")
-![](https://img.alicdn.com/tfs/TB1PrPatXY7gK0jSZKzXXaikpXa-1122-709.png "")
-### 发起代码评审
+To your Cartfile add:
 
-功能开发完毕后，通常你需要发起「[__代码合并和评审__](https://help.aliyun.com/document_detail/153872.html)」，Codeup 支持多人协作的代码评审服务，你可以通过「[__保护分支__](https://help.aliyun.com/document_detail/153873.html)」策略及「[__合并请求设置__](https://help.aliyun.com/document_detail/153874.html)」对合并过程进行流程化管控，同时提供 WebIDE 在线代码评审及冲突解决能力，让你的评审过程更加流畅。
+    github "facebook/FBRetainCycleDetector"
 
-![](https://img.alicdn.com/tfs/TB1XHrctkP2gK0jSZPxXXacQpXa-1432-887.png "")
+`FBRetainCycleDetector` is built out from non-debug builds, so when you want to test it, use
 
-![](https://img.alicdn.com/tfs/TB1V3fctoY1gK0jSZFMXXaWcVXa-1432-600.png "")
+    carthage update --configuration Debug
 
-### 查看代码贡献
-代码库提供了图形化报表帮助企业查看团队的代码提交和代码行贡献情况，此外还支持查看提交评审率、千行代码评论数等指标以衡量成员的代码评审活动参与度。
+### CocoaPods
 
-### 成员协作
+To your podspec add:
 
-是时候邀请成员一起编写卓越的代码工程了，请点击右上角「成员」邀请你的小伙伴开始协作吧！
+    pod 'FBRetainCycleDetector'
 
-### 更多
+You'll be able to use `FBRetainCycleDetector` fully only in `Debug` builds. This is controlled by [compilation flag](https://github.com/facebook/FBRetainCycleDetector/blob/main/FBRetainCycleDetector/Detector/FBRetainCycleDetector.h#L83) that can be provided to the build to make it work in other configurations.
 
-Git 使用教学、高级功能指引等更多说明，参见[__Codeup帮助文档__](https://help.aliyun.com/document_detail/153784.html)。
+## Example usage
+
+Let's quickly dive in
+
+```objc
+#import <FBRetainCycleDetector/FBRetainCycleDetector.h>
+```
+
+```objc
+FBRetainCycleDetector *detector = [FBRetainCycleDetector new];
+[detector addCandidate:myObject];
+NSSet *retainCycles = [detector findRetainCycles];
+NSLog(@"%@", retainCycles);
+```
+
+`- (NSSet<NSArray<FBObjectiveCGraphElement *> *> *)findRetainCycles` will return a set of arrays of wrapped objects. It's pretty hard to look at at first, but let's go through it. Every array in this set will represent one retain cycle. Every element in this array is a wrapper around one object in this retain cycle. Check [FBObjectiveCGraphElement](https://github.com/facebook/FBRetainCycleDetector/blob/main/FBRetainCycleDetector/Graph/FBObjectiveCGraphElement.h).
+
+Example output could look like this:
+```
+{(
+    (
+        "-> MyObject ",
+        "-> _someObject -> __NSArrayI "
+    )
+)}
+```
+`MyObject` through `someObject` property retained `NSArray` that it was a part of.
+
+FBRetainCycleDetector will look for cycles that are no longer than 10 objects.
+We can make it bigger (although it's going to be slower!).
+
+```objc
+FBRetainCycleDetector *detector = [FBRetainCycleDetector new];
+[detector addCandidate:myObject];
+NSSet *retainCycles = [detector findRetainCyclesWithMaxCycleLength:100];
+```
+
+### Filters
+
+There could also be retain cycles that we would like to omit. It's because not every retain cycle is a leak, and we might want to filter them out.
+To do so we need to specify filters:
+
+```objc
+NSMutableArray *filters = @[
+  FBFilterBlockWithObjectIvarRelation([UIView class], @"_subviewCache"),
+];
+
+// Configuration object can describe filters as well as some options
+FBObjectGraphConfiguration *configuration =
+[[FBObjectGraphConfiguration alloc] initWithFilterBlocks:filters
+                                     shouldInspectTimers:YES];
+FBRetainCycleDetector *detector = [[FBRetainCycleDetector alloc] initWithConfiguration:configuration];
+[detector addCandidate:myObject];
+NSSet *retainCycles = [detector findRetainCycles];
+```
+
+Every filter is a block that having two `FBObjectiveCGraphElement` objects can say, if their relation is valid.
+
+Check [FBStandardGraphEdgeFilters](FBRetainCycleDetector/Filtering/FBStandardGraphEdgeFilters.h) to learn more about how to use filters.
+
+### NSTimer
+
+NSTimer can be troublesome as it will retain it's target. Oftentimes it means a retain cycle. `FBRetainCycleDetector` can detect those,
+but if you want to skip them, you can specify that in the configuration you are passing to `FBRetainCycleDetector`.
+
+```objc
+FBObjectGraphConfiguration *configuration =
+[[FBObjectGraphConfiguration alloc] initWithFilterBlocks:someFilters
+                                     shouldInspectTimers:NO];
+FBRetainCycleDetector *detector = [[FBRetainCycleDetector alloc] initWithConfiguration:configuration];
+```
+
+### Associations
+
+Objective-C let's us set associated objects for every object using [objc_setAssociatedObject](https://developer.apple.com/library/mac/documentation/Cocoa/Reference/ObjCRuntimeRef/#//apple_ref/c/func/objc_setAssociatedObject).
+
+These associated objects can lead to retain cycles if we use retaining policies, like `OBJC_ASSOCIATION_RETAIN_NONATOMIC`. FBRetainCycleDetector can catch these kinds of cycles, but to do so we need to set it up. Early in the application's lifetime, preferably in `main.m` we can add this:
+
+```objc
+#import <FBRetainCycleDetector/FBAssociationManager.h>
+
+int main(int argc, char * argv[]) {
+  @autoreleasepool {
+    [FBAssociationManager hook];
+    return UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class]));
+  }
+}
+```
+
+In the code above `[FBAssociationManager hook]` will use [fishhook](https://github.com/facebook/fishhook) to interpose functions `objc_setAssociatedObject` and `objc_resetAssociatedObjects` to track associations before they are made.
+
+## Getting Candidates
+
+If you want to profile your app, you might want to have an abstraction over how to get candidates for `FBRetainCycleDetector`. While you can simply track it your own, you can also use [FBAllocationTracker](https://github.com/facebook/FBAllocationTracker). It's a small tool we created that can help you track the objects. It offers simple API that you can query for example for all instances of given class, or all class names currently tracked, etc.
+
+`FBAllocationTracker` and `FBRetainCycleDetector` can work nicely together. We have created a small example and drop-in project called [FBMemoryProfiler](https://github.com/facebook/FBMemoryProfiler) that leverages both these projects. It offers you very basic UI that you can use to track all allocations and force retain cycle detection from UI.
+
+## Contributing
+See the [CONTRIBUTING](CONTRIBUTING.md) file for how to help out.
+
+## License
+[`FBRetainCycleDetector` is BSD-licensed](LICENSE).
